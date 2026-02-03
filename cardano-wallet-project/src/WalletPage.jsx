@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -120,51 +121,68 @@ function WalletPage() {
   };
 
   // ---- CONNECT WALLET ----
-  const connectWallet = async () => {
-    try {
-      if (walletType === "metamask") {
-        await switchToSepolia();
+const connectWallet = async () => {
+  try {
+    let connected = false;
 
-        const accounts = await window.ethereum.request({
-          method: "eth_requestAccounts",
-        });
+    // -------- MetaMask --------
+    if (walletType === "metamask") {
+      await switchToSepolia();
 
-        setWalletAddress(accounts[0]);
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+
+      if (accounts && accounts.length > 0) {
+        connected = true;
         toast.success("MetaMask connected");
       }
+    }
 
-      if (walletType === "cardano") {
-        if (!selectedCardanoWallet) {
-          toast.error("Select a Cardano wallet");
-          return;
-        }
+    // -------- Cardano --------
+    if (walletType === "cardano") {
+      if (!selectedCardanoWallet) {
+        toast.error("Select a Cardano wallet");
+        return;
+      }
 
-        const api = await window.cardano[selectedCardanoWallet].enable();
+      const blockfrostKey = process.env.REACT_APP_BLOCKFROST_KEY;
+      if (!blockfrostKey) {
+        toast.error("Blockfrost key missing in .env");
+        return;
+      }
 
-        const blockfrostKey = process.env.REACT_APP_BLOCKFROST_KEY;
-        if (!blockfrostKey) {
-          toast.error("Blockfrost key missing in .env");
-          return;
-        }
+      const api = await window.cardano[selectedCardanoWallet].enable();
 
-        const lucidInstance = await Lucid.new(
-          new Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", blockfrostKey),
-          "Preprod"
-        );
+      const lucidInstance = await Lucid.new(
+        new Blockfrost(
+          "https://cardano-preprod.blockfrost.io/api/v0",
+          blockfrostKey
+        ),
+        "Preprod"
+      );
 
-        lucidInstance.selectWallet(api);
+      lucidInstance.selectWallet(api);
 
-        const addr = await lucidInstance.wallet.address();
+      const addr = await lucidInstance.wallet.address();
 
+      if (addr) {
         setLucid(lucidInstance);
-        setWalletAddress(addr);
-
+        connected = true;
         toast.success("Cardano wallet connected");
       }
-    } catch (err) {
+    }
+
+    if (!connected) {
       toast.error("Wallet connection failed");
     }
-  };
+
+  } catch (err) {
+    console.error(err);
+    toast.error("Wallet connection failed");
+  }
+};
+
 
   // ---- SAVE WALLET ----
   const getDetails = async () => {
@@ -201,6 +219,7 @@ function WalletPage() {
         const utxos = await lucid.wallet.getUtxos();
 
         let lovelace = window.BigInt(0);
+
         utxos.forEach((u) => {
           lovelace += u.assets.lovelace || window.BigInt(0);
         });
@@ -245,81 +264,144 @@ const sendTransaction = async () => {
     return;
   }
 
-  if (walletType !== "metamask") {
-    toast.error("Select MetaMask wallet");
-    return;
-  }
-
   try {
-    await switchToSepolia();
+    // Cardano
+    if (lucid) {
+      const lovelace = window.BigInt(parseFloat(amount) * 1_000_000);
 
-    const token = localStorage.getItem("token");
+      const tx = await lucid
+        .newTx()
+        .payToAddress(toAddress, { lovelace })
+        .complete();
 
-    const accounts = await window.ethereum.request({
-      method: "eth_accounts",
-    });
-    const from = accounts[0];
+      const signed = await tx.sign().complete();
+      const txHash = await signed.submit();
 
-    const valueHex =
-      "0x" + Math.floor(parseFloat(amount) * 1e18).toString(16);
+      const from = await lucid.wallet.address();
+      const token = localStorage.getItem("token");
 
-    const txHash = await window.ethereum.request({
-      method: "eth_sendTransaction",
-      params: [{ from, to: toAddress, value: valueHex }],
-    });
+    
+      await fetch("http://localhost:5000/save-transaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token,
+        },
+        body: JSON.stringify({
+          chain: "cardano",
+          from,
+          to: toAddress,
+          amount: amount + " ADA",
+          txHash,
+          status: "success",
+        }),
+      });
 
-    await fetch("http://localhost:5000/save-transaction", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: token,
-      },
-      body: JSON.stringify({
-        chain: "ethereum",
-        from,
-        to: toAddress,
-        amount: amount + " ETH",
-        txHash,
-        status: "success",
-      }),
-    });
+      toast.success("ADA sent");
 
-    toast.success("ETH sent & saved");
-    loadTransactions();
+      
+      await loadFullDetails();
+      await loadTransactions();
+
+      return;
+    }
+
+    //MetaMask
+    if (window.ethereum) {
+      await switchToSepolia();
+
+      const accounts = await window.ethereum.request({
+        method: "eth_accounts",
+      });
+
+      const from = accounts[0];
+
+      const valueHex =
+        "0x" + Math.floor(parseFloat(amount) * 1e18).toString(16);
+
+      const txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [{ from, to: toAddress, value: valueHex }],
+      });
+
+      const token = localStorage.getItem("token");
+
+      await fetch("http://localhost:5000/save-transaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token,
+        },
+        body: JSON.stringify({
+          chain: "ethereum",
+          from,
+          to: toAddress,
+          amount: amount + " ETH",
+          txHash,
+          status: "success",
+        }),
+      });
+
+      toast.success("ETH sent");
+
+      await loadFullDetails();
+      await loadTransactions();
+
+      return;
+    }
+
+    toast.error("Connect a wallet first");
   } catch (err) {
     console.error(err);
-    toast.error("ETH transaction failed");
+    toast.error("Transaction failed");
   }
 };
 
 
+const logout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("walletAddress");
+  localStorage.removeItem("walletType");
+  navigate("/login");
+};
 
-
-  const logout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
 
 //----UI----
 
-  const Dashboard = () => (
+const Dashboard = () => {
+  const isWalletLogin = wallet?.walletType === "wallet";
+
+  const displayName = isWalletLogin
+    ? wallet?.walletAddress
+    : `${user?.firstName} ${user?.lastName}`;
+
+  const displayEmail = isWalletLogin ? "None" : user?.email;
+
+  return (
     <div>
       <div className="page-title">Dashboard</div>
 
       <div className="grid-2">
         <div className="section-card">
           <div className="section-title">User Info</div>
+
           {user && (
             <>
-              <div className="info-item"><b>Name:</b> {user.firstName} {user.lastName}</div>
-              <div className="info-item"><b>Email:</b> {user.email}</div>
+              <div className="info-item">
+                <b>Name:</b> {displayName}
+              </div>
+
+              <div className="info-item">
+                <b>Email:</b> {displayEmail}
+              </div>
             </>
           )}
         </div>
 
         <div className="section-card">
           <div className="section-title">Wallet Info</div>
-          {wallet ? (
+
+          {wallet?.walletAddress ? (
             <>
               <div className="info-item"><b>Type:</b> {wallet.walletType}</div>
               <div className="info-item"><b>Address:</b> {wallet.walletAddress}</div>
@@ -332,6 +414,8 @@ const sendTransaction = async () => {
       </div>
     </div>
   );
+};
+
 
   const WalletSection = () => (
     <div>
@@ -422,8 +506,21 @@ const SendSection = () => (
       <div className="section-card">
         {user && (
           <>
-            <div className="info-item"><b>Name:</b> {user.firstName} {user.lastName}</div>
-            <div className="info-item"><b>Email:</b> {user.email}</div>
+<div className="info-item">
+  <b>Name:</b>{" "}
+  {wallet && wallet.walletType === "wallet"
+    ? wallet.walletAddress
+    : `${user?.firstName} ${user?.lastName}`}
+</div>
+
+<div className="info-item">
+  <b>Email:</b>{" "}
+  {wallet && wallet.walletType === "wallet"
+    ? "None"
+    : user?.email}
+</div>
+
+
           </>
         )}
       </div>
@@ -459,13 +556,3 @@ const SendSection = () => (
 }
 
 export default WalletPage;
-
-
-
-
-
-
-
-
-
-

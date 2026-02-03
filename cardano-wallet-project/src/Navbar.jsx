@@ -4,11 +4,13 @@ import { toast } from "react-toastify";
 function Navbar({ user }) {
   const navigate = useNavigate();
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    toast.success("Logged out");
-    navigate("/login");
-  };
+const logout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("walletAddress");
+  localStorage.removeItem("walletType");
+  navigate("/login");
+};
+
 
   return (
     <div

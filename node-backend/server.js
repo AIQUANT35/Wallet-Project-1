@@ -144,6 +144,58 @@ app.post("/login", async (req, res) => {
   res.json({ token });
 });
 
+
+
+// WALLET LOGIN 
+app.post("/wallet-login", async (req, res) => {
+  try {
+    let walletAddress = req.body?.walletAddress;
+
+    if (!walletAddress) {
+      return res.status(400).json({ message: "Wallet required" });
+    }
+
+    walletAddress = walletAddress.toLowerCase();
+
+    const email = walletAddress + "@wallet.local";
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      user = await User.create({
+        firstName: walletAddress,
+        lastName: "",
+        email,
+        password: "wallet-login-temp",
+      });
+    }
+
+    let wallet = await Wallet.findOne({ walletAddress });
+
+    if (!wallet) {
+      wallet = await Wallet.create({
+        userId: user._id,
+        walletType: "wallet",
+        walletAddress,
+        balance: "0",
+      });
+    }
+
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.status(200).json({ token });
+
+  } catch (err) {
+    console.error("WALLET LOGIN ERROR:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
 // WALLET
 app.get("/full-details", authMiddleware, async (req, res) => {
   const user = await User.findById(req.userId).select("-password");
@@ -271,7 +323,7 @@ app.get("/my-nfts", authMiddleware, async (req, res) => {
   res.json(nfts);
 });
 
-// START
+
 app.listen(5000, () => {
   console.log("Server running on port 5000");
 });

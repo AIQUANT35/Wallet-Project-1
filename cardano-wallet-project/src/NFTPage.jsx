@@ -43,10 +43,13 @@ function NFTPage() {
     loadNftTransactions();
   }, []);
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
+const logout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("walletAddress");
+  localStorage.removeItem("walletType");
+  navigate("/login");
+};
+
 
   return (
     <div>

@@ -3,28 +3,33 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
 function Signup() {
-  // ============================
-  // Clear any old login session
-  // ============================
+
   useEffect(() => {
     localStorage.removeItem("token");
   }, []);
 
-  // ============================
-  // State variables for form
-  // ============================
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+
+  const [walletType, setWalletType] = useState("");
+  const [cardanoWallets, setCardanoWallets] = useState([]);
+  const [selectedCardanoWallet, setSelectedCardanoWallet] = useState("");
+
   const navigate = useNavigate();
 
-  // ============================
-  // Handle Signup Button Click
-  // ============================
+
+  useEffect(() => {
+    if (window.cardano) {
+      setCardanoWallets(Object.keys(window.cardano));
+    }
+  }, []);
+
+  //-----Signup----
   const handleSignup = async () => {
-    // Basic validation
     if (!firstName || !lastName || !email || !password) {
       toast.error("All fields are required");
       return;
@@ -36,7 +41,6 @@ function Signup() {
     }
 
     try {
-      // Call backend signup API
       const res = await fetch("http://localhost:5000/signup", {
         method: "POST",
         headers: {
@@ -52,26 +56,90 @@ function Signup() {
 
       const data = await res.json();
 
-      // If backend returns error
       if (!res.ok) {
         toast.error(data.message || "Signup failed");
         return;
       }
 
-      // Success message
       toast.success("Signup successful! Please login.");
-
-      // Go to login page
       navigate("/login");
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error("Server not reachable");
     }
   };
 
-  // ============================
+
+  const connectWalletSignup = async () => {
+    try {
+      if (!walletType) {
+        toast.error("Select wallet first");
+        return;
+      }
+
+      let walletAddress = "";
+
+      // ---------- MetaMask ----------
+      if (walletType === "metamask") {
+        if (!window.ethereum) {
+          toast.error("Install MetaMask");
+          return;
+        }
+
+        const accounts = await window.ethereum.request({
+          method: "eth_requestAccounts",
+        });
+
+        walletAddress = accounts[0];
+      }
+
+      // ---------- Cardano ----------
+      if (walletType === "cardano") {
+        if (!selectedCardanoWallet) {
+          toast.error("Select Cardano wallet");
+          return;
+        }
+
+        const api = await window.cardano[selectedCardanoWallet].enable();
+        const addresses = await api.getUsedAddresses();
+
+        walletAddress = addresses[0];
+      }
+
+      // wallet-login API
+      const res = await fetch("http://localhost:5000/wallet-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress }),
+      });
+
+      const data = await res.json();
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("walletAddress", walletAddress);
+      localStorage.setItem("walletType", walletType);
+
+      // save wallet
+      await fetch("http://localhost:5000/save-wallet", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: data.token,
+        },
+        body: JSON.stringify({
+          walletType,
+          walletAddress,
+          balance: "0",
+        }),
+      });
+
+      toast.success("Wallet connected");
+      navigate("/wallet");
+    } catch {
+      toast.error("Wallet connection failed");
+    }
+  };
+
   // UI
-  // ============================
   return (
     <div className="page-container">
       <div className="card">
@@ -103,6 +171,38 @@ function Signup() {
         />
 
         <button onClick={handleSignup}>Signup</button>
+
+        <br />
+        <hr />
+
+        
+        <select
+          value={walletType}
+          onChange={(e) => setWalletType(e.target.value)}
+        >
+          <option value="">Select Wallet</option>
+          <option value="metamask">MetaMask</option>
+          <option value="cardano">Cardano</option>
+        </select>
+
+       
+        {walletType === "cardano" && (
+          <select
+            value={selectedCardanoWallet}
+            onChange={(e) => setSelectedCardanoWallet(e.target.value)}
+          >
+            <option value="">Select Cardano Wallet</option>
+            {cardanoWallets.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <button onClick={connectWalletSignup}>
+          Connect with Wallet
+        </button>
 
         <div className="link-text">
           Already have an account?{" "}
