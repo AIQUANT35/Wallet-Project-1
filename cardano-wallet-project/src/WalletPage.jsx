@@ -120,12 +120,12 @@ function WalletPage() {
     }
   };
 
-  // ---- CONNECT WALLET ----
+  //  CONNECT WALLET 
 const connectWallet = async () => {
   try {
     let connected = false;
 
-    // -------- MetaMask --------
+    // MetaMask
     if (walletType === "metamask") {
       await switchToSepolia();
 
@@ -139,7 +139,7 @@ const connectWallet = async () => {
       }
     }
 
-    // -------- Cardano --------
+    // Cardano
     if (walletType === "cardano") {
       if (!selectedCardanoWallet) {
         toast.error("Select a Cardano wallet");
@@ -184,7 +184,7 @@ const connectWallet = async () => {
 };
 
 
-  // ---- SAVE WALLET ----
+  //  SAVE WALLET 
   const getDetails = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -254,7 +254,7 @@ const connectWallet = async () => {
     }
   };
 
-  // ---- SEND ----
+  //  SEND 
 const sendTransaction = async () => {
   const toAddress = toAddressRef.current?.value?.trim();
   const amount = amountRef.current?.value?.trim();
@@ -366,7 +366,7 @@ const logout = () => {
 };
 
 
-//----UI----
+//UI
 
 const Dashboard = () => {
   const isWalletLogin = wallet?.walletType === "wallet";

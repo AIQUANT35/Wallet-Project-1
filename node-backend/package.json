@@ -10,7 +10,9 @@
     "jsonwebtoken": "^9.0.3",
     "lucid-cardano": "^0.10.11",
     "mongoose": "^9.1.5",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.9"
